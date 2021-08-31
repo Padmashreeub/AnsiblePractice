@@ -1,0 +1,44 @@
+---
+- name: add monitoring plugins
+  yum:
+    name: nagios-plugins-all
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: add monitoring plugins
+  apt:
+    name: nagios-plugins-basic
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: add monitoring user
+  user:
+    name: monitor
+
+- name: add ssh dir
+  file:
+    path: /home/monitor/.ssh
+    owner: monitor
+    mode: 0700
+    state: directory
+
+- name: upload authorized_keys
+  copy:
+    src: authorized_keys
+    dest: /home/monitor/.ssh/authorized_keys
+    owner: monitor
+    mode: 0600 
+
+- name: upload memory plugin
+  copy:
+    src: check_mem
+    dest: /usr/lib64/nagios/plugins/check_mem
+    mode: 0755
+  when: ansible_os_family == "RedHat"
+
+- name: upload memory plugin
+  copy:
+    src: check_mem
+    dest: /usr/lib/nagios/plugins/check_mem
+    mode: 0755
+  when: ansible_os_family == "Debian"

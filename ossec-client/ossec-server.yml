@@ -1,0 +1,4 @@
+---
+- hosts: ossec-server
+  roles:
+    - ossec-server

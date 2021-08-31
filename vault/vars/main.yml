@@ -1,0 +1,14 @@
+---
+# vars file for vault
+vault_packages:
+  - libcap2-bin
+  - unzip
+vault_group_name: vault
+vault_user_name: vault
+root_user: root
+unseal_keys_dir_output: "{{ playbook_dir }}/unsealKey"
+root_token_dir_output: "{{ playbook_dir }}/rootKey"
+dbname: vault23
+dbuser: user23
+table_name: vault_kv_store
+password_of_dbuser: "secret1234"

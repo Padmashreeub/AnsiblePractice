@@ -1,0 +1,53 @@
+---
+
+- name: Add an apt signing key for omd
+  apt_key:
+    url: https://labs.consol.de/repo/stable/RPM-GPG-KEY
+    state: present
+
+- name: add repo for omd
+  apt_repository:
+    repo: deb http://labs.consol.de/repo/stable/ubuntu bionic main
+    state: present
+    filename: labs-consol-stable
+
+- name: install omd
+  package:
+    name: omd
+    update_cache: yes
+
+- name: create site folder for site admin credentials
+  file:
+    path: "{{ playbook_dir }}/sites"
+    state: directory
+  delegate_to: localhost
+
+- name: creating site omd.test.com
+  shell: omd create "{{ site_name }}"
+  register: site_credentials
+
+- name: parse output of site creation command
+  set_fact:
+    site_creds_parsed: "{{ site_credentials.stdout }}"
+
+- name: save credntials to a file
+  copy:
+    dest: "{{ playbook_dir }}/sites/{{ site_name }}"
+    content: "{{ site_creds_parsed }}"
+  delegate_to: localhost
+
+- name: starting site
+  command: omd start "{{ site_name }}"
+
+- name: change virtualhost server name
+  lineinfile:
+    path: "/omd/sites/{{ site_name }}/etc/apache/apache.conf"
+    regexp: '^ServerName'
+    line: "ServerName   {{ site }}"
+    state: present
+
+- name: reload apache2
+  systemd:
+    name: apache2
+    state: reloaded
+

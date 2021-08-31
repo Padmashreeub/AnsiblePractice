@@ -1,0 +1,48 @@
+---
+
+#enable secret type database
+- name: enabling database secret
+  command: vault secrets enable database
+  ignore_errors: yes
+  environment:
+    VAULT_ADDR: "{{volt_url}}"
+    VAULT_TOKEN: "{{volt_token}}"
+
+
+
+# User (role) creation for generating dynamic credentials in postgres 
+# and if the user mentioned in the vars/main.yaml is present in postgres, it won't create the user
+- name: postgres user(role) creation for creating dynamic user
+  postgresql_user:
+    db: "{{database_name}}"
+    name: "{{username}}"
+    password: "{{password}}"
+    role_attr_flags: SUPERUSER,LOGIN,CREATEROLE
+
+
+
+## Creating vault configuration for generating dynamic credentials.
+## Have to provide database_name, vault_role_name, username, password, volt_url, volt_token in the main.yaml file 
+## under vars folder
+- name: Creating vault configuration for generating dynamic credentials
+  command: vault write database/config/{{database_name}} plugin_name=postgresql-database-plugin     allowed_roles={{vault_role_name}}     connection_url='postgresql://{{username}}:{{password}}@localhost:5432/{{database_name}}' username={{username}} password={{password}}
+  environment:
+    VAULT_ADDR: "{{volt_url}}"
+    VAULT_TOKEN: "{{volt_token}}"
+
+
+#creating djnago postgres user if it is not present
+- name: postgres user(role) creation for creating dynamic user
+  postgresql_user:
+    db: "{{database_name}}"
+    name: "{{vault_role_name}}"
+
+
+## Defing the privileges for the dynamic credentials and password rotation for the dynamic postgres user
+- name: Creating vault role (which is mentioned in the previous command module "vault_role_name") in postgresql
+  command: vault write database/roles/{{vault_role_name}} db_name={{database_name}} creation_statements="ALTER ROLE {{vault_role_name}} WITH LOGIN PASSWORD {{vault_role_creation_password_syndax}} VALID UNTIL {{vault_role_creation_expiration_syndax}};  GRANT ALL ON ALL TABLES IN SCHEMA public TO {{vault_role_name}}; GRANT SELECT ON ALL TABLES IN SCHEMA public TO {{vault_role_name}};" revocation_statements="SELECT revoke_access({{vault_role_name}}); DROP user {{vault_role_name}};" default_ttl={{default_ttl}} max_ttl={{max_ttl}}
+  environment:
+    VAULT_ADDR: "{{volt_url}}"
+    VAULT_TOKEN: "{{volt_token}}"
+
+

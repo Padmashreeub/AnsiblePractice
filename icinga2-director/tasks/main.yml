@@ -1,0 +1,142 @@
+---
+# tasks file for icinga2-director
+- name: Recursively change ownership of a directory
+  file:
+    path: /etc/icingaweb2
+    state: directory
+    recurse: yes
+    owner: apache
+    group: icingaweb2
+
+- name: create director database and user
+  shell: mysql -e "CREATE DATABASE director CHARACTER SET 'utf8'; GRANT ALL ON director.* TO director@localhost IDENTIFIED BY 'director';"
+  ignore_errors: yes
+
+- name: Run a script with arguments
+  script: director.sh
+
+- name: enable director module
+  shell: icingacli module enable director
+
+- name: create director directory
+  file:
+    path: /etc/icingaweb2/modules/director
+    state: directory
+    owner: apache
+    group: icingaweb2
+
+- name:  copy director conf
+  copy:
+    src: "director_{{ item }}"
+    dest: "/etc/icingaweb2/modules/director/{{ item}}"
+    owner: apache
+    group: icingaweb2
+  with_items:
+    - config.ini
+    - kickstart.ini
+
+- name: migrating database schema for director
+  shell: icingacli director migration run --verbose
+
+- name: setup master node
+  shell: icinga2 node setup --master
+
+- name: getting hostname
+  shell: hostname
+  register: hostname
+
+- name: change endpoint value
+  lineinfile: 
+    dest: /etc/icingaweb2/modules/director/kickstart.ini
+    regexp: '^endpoint' 
+    line: "endpoint = {{ hostname.stdout }}"
+
+- name: copy api-users.conf
+  copy:
+    src: "director_{{ item }}"
+    dest: "/etc/icinga2/conf.d/{{ item }}"
+  with_items:
+    - api-users.conf
+
+- name: reload services
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - httpd
+    - icinga2
+
+- name: director kickstart
+  shell: sudo icingacli director kickstart run
+
+- name: deploy director configuration
+  shell: icingacli director config deploy
+
+- name: downloading and unziping aws module
+  unarchive:
+    src: "https://github.com/Icinga/icingaweb2-module-aws/archive/master.zip"
+    dest: /usr/share/icingaweb2/modules/
+    remote_src: True
+
+- name: creating directory for aws module
+  file:
+    path: /usr/share/icingaweb2/modules/aws/
+    state: directory
+
+- name: change name of aws module folder to aws
+  copy: 
+    src: /usr/share/icingaweb2/modules/icingaweb2-module-aws-master/
+    dest: /usr/share/icingaweb2/modules/aws/
+    remote_src: True
+
+- name: delete icingaweb2-module-aws-master folder
+  file:
+    path: /usr/share/icingaweb2/modules/icingaweb2-module-aws-master
+    state: absent
+
+- name: downloading and unziping aws PHP SDK for aws modules
+  unarchive:
+    src: "https://github.com/aws/aws-sdk-php/releases/download/3.106.1/aws.zip"
+    dest: /usr/share/icingaweb2/modules/aws/library/vendor/aws/
+    remote_src: True
+
+- name: enable aws module
+  shell: icingacli module enable aws
+
+- name: creating directory for aws module
+  file:
+    path: /etc/icingaweb2/modules/aws
+    state: directory
+    owner: apache
+    group: icingaweb2
+
+- name: copy access key file for aws module
+  copy:
+    src: "aws_{{ item }}"
+    dest: "/etc/icingaweb2/modules/aws/{{ item }}"
+  with_items:
+    - keys.ini
+
+- name: create  /etc/icinga2/zones.d/director-global directory
+  file:
+    path: /etc/icinga2/zones.d/director-global
+    state: directory
+    owner: icinga
+    group: icinga
+
+- name: copy host template conf
+  copy:
+    src: host_templates.conf
+    dest: /etc/icinga2/zones.d/director-global/host_templates.conf
+
+- name: copy director jobs service
+  copy:
+    src: director-jobs.service
+    dest: /usr/lib/systemd/system/director-jobs.service
+
+- name: start and enable director-jobs service
+  service:
+    name: director-jobs
+    state: started
+    enabled: yes
+    daemon_reload: yes

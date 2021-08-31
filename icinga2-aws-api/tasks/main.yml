@@ -1,0 +1,58 @@
+---
+# tasks file for aws_api
+- name: install ius repo
+  yum:
+    name: https://centos7.iuscommunity.org/ius-release.rpm
+    state: present
+
+- name: install python3 pacakges
+  yum:
+    name: ['python34u', 'python34u-wheel', 'python34-pip']
+    state: present
+
+- name: install awscli
+  pip:
+    name: ['awscli', 'boto3', 'python-dateutil']
+    virtualenv_python: python3.4
+
+- name: download icinga2-aws api
+  unarchive:
+    src: https://github.com/mathewmeconry/icinga2-aws/archive/master.zip
+    dest: /root
+    remote_src: True
+
+- name: replace hosts template
+  copy:
+    src: "aws_api_{{ item }}"
+    dest: "/root/icinga2-aws-master/{{ item }}"
+  with_items:
+    - hosts.conf
+    - config.ini
+    - install.sh
+
+- name: create .aws folder
+  file:
+    path: /root/.aws
+    state: directory
+
+- name: copy aws confs
+  copy:
+    src: "aws_api_{{ item }}"
+    dest: "/root/.aws/{{ item }}"
+  with_items:
+    - config
+    - credentials
+
+- name: execute icinga2-aws api
+  shell: python3 icinga2-aws.py -t Name:centos-icinga_director -th /root/icinga2-aws-master/hosts.conf -tc /root/icinga2-aws-master/example/checkconfig.conf.example
+  args:
+    chdir: /root/icinga2-aws-master/
+
+- name: remove checks.conf inside all hosts
+  shell: find /etc/icinga2/conf.d/hosts -iname 'checks.conf' -delete
+
+- name: restart icinga2
+  systemd:
+    name: icinga2
+    state: reloaded
+  

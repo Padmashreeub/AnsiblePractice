@@ -1,0 +1,46 @@
+---
+# tasks file for ossec-server
+- name: disable SELINUX
+  shell: setenforce 0 
+
+- name: Install required pacakges
+  yum:
+    name: ['gcc', 'zlib-devel']
+
+- name: Download and unarchive ossec files
+  unarchive:
+    src: "{{ ossec_source }}"
+    dest: "{{ ossec_installation_path }}"
+    remote_src: True
+
+- name: Download and unarchive pcre
+  unarchive:
+    src: "{{ pcre_source }}"
+    dest: "{{ ossec_installation_path }}{{ ossec_path }}{{ pcre_installation_path }}"
+    remote_src: True
+
+- name: Copying ossec client value file
+  copy:
+    src: client_values
+    dest: "{{ ossec_installation_path }}{{ ossec_path }}"
+
+- name: update server ip in client_values file
+  lineinfile:
+    path: "{{ ossec_installation_path }}{{ ossec_path }}client_values"
+    regexp: 'server_ip'
+    line: "{{ ip }}"
+    state: present
+
+- name: check /var/ossec/ directory exists
+  stat:
+    path: "{{ ossec }}"
+  register: ossec_directory
+
+- name: Install OSSEC Agent
+  shell: ./install.sh < client_values
+  args:
+    chdir: "{{ ossec_installation_path }}{{ ossec_path }}"
+  when: ossec_directory.stat.exists == false
+
+- name: start ossec service
+  shell: /var/ossec/bin/ossec-control start

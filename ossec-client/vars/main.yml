@@ -1,0 +1,9 @@
+---
+# vars file for ossec-client
+ossec_source: "https://github.com/ossec/ossec-hids/archive/3.3.0.tar.gz"
+pcre_source: "https://ftp.pcre.org/pub/pcre/pcre2-10.32.tar.gz"
+ossec_installation_path: /root/
+ossec_path: ossec-hids-3.3.0/
+pcre_installation_path: src/external/
+ossec: /var/ossec/
+ip: 52.66.242.132

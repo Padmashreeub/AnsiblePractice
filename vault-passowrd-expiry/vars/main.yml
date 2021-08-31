@@ -1,0 +1,13 @@
+---
+# vars file for vault-passowrd-expiry
+database_name: "vault"
+vault_role_name: "django"
+username: "vault_user"
+password: "secret"
+volt_url: 'http://127.0.0.1:8200'
+volt_token: 's.30T71W2lH8UPtLRzTXemHYC4'
+default_ttl: "1h"
+max_ttl: "24h"
+
+vault_role_creation_password_syndax: !unsafe "'{{password}}'"
+vault_role_creation_expiration_syndax: !unsafe "'{{expiration}}'"

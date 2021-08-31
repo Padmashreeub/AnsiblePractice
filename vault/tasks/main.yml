@@ -1,0 +1,131 @@
+---
+# tasks file for vault-new
+- name: installing packages
+  package:
+    name: "{{ item }}"
+    update_cache: yes
+  with_items: "{{ vault_packages }}"
+
+- name: creating vault group
+  group:
+    name: "{{ vault_group_name }}"
+
+- name: creating vault user
+  user:
+    name: "{{ vault_user_name }}"
+    group: "{{ vault_group_name }}"
+    system: yes
+    shell: "/sbin/nologin"
+    comment: "vault nologin user"
+    createhome: "no"
+    state: present
+
+#- name: psql query to initialize vault
+#  command: psql -U "{{dbuser}}" -d "{{dbname}}" -c 'CREATE TABLE vault_kv_store ( parent_path TEXT COLLATE "C" NOT NULL, path TEXT COLLATE "C", key TEXT COLLATE "C", value BYTEA, CONSTRAINT pkey PRIMARY KEY (path, key) );'
+#  environment:
+#    PGPASSWORD: "{{password_of_dbuser}}"
+
+- name: creating table vault_kv_store for initializing vault
+  postgresql_table:
+    db: "{{dbname}}"
+    name: "{{table_name}}"
+    owner: "{{dbuser}}"
+    columns:
+      - parent_path TEXT COLLATE "C" NOT NULL
+      - path TEXT COLLATE "C" PRIMARY KEY
+      - key TEXT COLLATE "C" PRIMARY KEY
+      - value BYTEA
+      - CONSTRAINT pkey PRIMARY KEY (path, key)
+
+
+- name: creating index in vault_kv_store table (part of vault initialization)
+  postgresql_idx:
+    db: "{{dbname}}"
+    table: "{{table_name}}"
+    columns:
+      - parent_path
+    name: parent_path_idx
+
+
+#- name: psql query to initialize vault
+#  command: psql -U "{{dbuser}}" -d "{{dbname}}" -c 'CREATE INDEX parent_path_idx ON vault_kv_store (parent_path);'
+#  environment:
+#    PGPASSWORD: "{{password_of_dbuser}}"
+
+- name: download and install vault binary
+  unarchive:
+    src: "https://releases.hashicorp.com/vault/1.1.3/vault_1.1.3_linux_amd64.zip"
+    dest: /usr/local/bin
+    owner: "{{ vault_user_name }}"
+    group: "{{ vault_group_name }}"
+    mode: 0755
+    remote_src: True
+
+- name: Set vault binary capabilities
+  capabilities:
+    path: /usr/local/bin/vault
+    capability: cap_ipc_lock+ep
+    state: present
+
+- name: copy service file
+  copy:
+    src: vault-server.service
+    dest: /etc/systemd/system/vault-server.service
+    owner: "{{ root_user }}"
+    group: "{{ root_user }}"
+
+- name: copy config file
+  copy:
+    src: vaultconfig.hcl
+    dest: /etc/vault.hcl
+    owner: "{{ vault_user_name }}"
+    group: "{{ vault_group_name }}"
+
+- name: changing username, password and database name in vault conf
+  lineinfile:
+    path: /etc/vault.hcl
+    regexp: "connection_url = \"postgres://username:password@localhost:5432/database_name\""
+    line: "connection_url = \"postgres://{{dbuser}}:{{password_of_dbuser}}@localhost:5432/{{dbname}}\""
+    state: present
+
+- name: vault service
+  service:
+    name: vault-server
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: Create unseal directories
+  file:
+    path: "{{ unseal_keys_dir_output }}"
+    state: directory
+  delegate_to: localhost
+
+- name: Create root key directories
+  file:
+    path: "{{ root_token_dir_output }}"
+    state: directory
+  delegate_to: localhost
+
+- name: Initialise Vault operator
+  shell: vault operator init -key-shares=5 -key-threshold=3 -format json
+  environment:
+    VAULT_ADDR: "http://127.0.0.1:8200"
+  register: vault_init_results
+
+- name: Parse output of vault init
+  set_fact:
+    vault_init_parsed: "{{ vault_init_results.stdout | from_json }}"
+
+- name: Write unseal keys to files
+  copy:
+    dest: "{{ unseal_keys_dir_output }}/unseal_key_{{ item.0 }}"
+    content: "{{ item.1 }}"
+  with_indexed_items: "{{ vault_init_parsed.unseal_keys_hex }}"
+  delegate_to: localhost
+
+- name: Write root token to file
+  copy:
+    content: "{{ vault_init_parsed.root_token }}"
+    dest: "{{root_token_dir_output}}/rootkey"
+  delegate_to: localhost

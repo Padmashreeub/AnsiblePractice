@@ -1,0 +1,8 @@
+---
+# vars file for couchdb-installation
+UUID_dir: "{{ playbook_dir }}/UUIDs"
+uuid_1: "{{ lookup('file', '{{ UUID_dir}}/uuid_0') }}"
+uuid_2: "{{ lookup('file', '{{ UUID_dir}}/uuid_1') }}"
+password: "password"
+admin_username: "admin"
+setup_cordination_ip: "{{ lookup('file', '{{ playbook_dir }}/setup_cordination_ip') }}"

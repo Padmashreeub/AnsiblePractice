@@ -1,0 +1,4 @@
+---
+- hosts: ossec-client
+  roles:
+    - ossec-client

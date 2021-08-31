@@ -1,0 +1,90 @@
+---
+# tasks file for icinga
+- name: Install icinga repository
+  yum: 
+    name: https://packages.icinga.com/epel/icinga-rpm-release-7-latest.noarch.rpm 
+    state: present
+
+- name: Install EPEL repository
+  yum:
+    name: epel-release
+    state: present
+
+- name: Install icinga2 packages
+  yum: 
+    name: ['icinga2', 'nagios-plugins-all', 'icinga2-selinux', 'icinga2-ido-mysql', 'python-pip', 'mysql-devel', 'python-devel', 'mariadb-server', 'mariadb', '@Development Tools'] 
+    state: present
+
+- name: Install the Python MySQLB module
+  pip: 
+    name: MySQL-python
+
+- name: Copy api-users conf
+  copy:
+    src: api-users.conf
+    dest: /etc/icinga2/conf.d/api-users.conf
+
+- name: ensure mysql is running and starts on boot
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  with_items:
+    - mariadb
+    - icinga2
+
+- name: update mysql root password for root account
+  mysql_user: 
+    name: root 
+    password: "{{ mysql_password }}"
+
+- name: copy my.conf
+  copy:
+    src: my.cnf
+    dest: /root/.my.cnf
+
+- name: ensure anonymous users are not in the database
+  mysql_user: 
+    name: ''
+    state: absent
+
+- name: remove the test database
+  mysql_db:
+    name: test
+    state: absent
+
+- name: Create mysql database for icinga2 
+  mysql_db:
+    name: icinga
+
+- name: Create database user icinga
+  mysql_user:
+    name: icinga
+    password: "{{ password_icinga }}"
+    priv: 'icinga.*:ALL'
+
+- name: Importing icinga 2 IDO schema
+  mysql_db:
+    name: icinga
+    state: import 
+    target: /usr/share/icinga2-ido-mysql/schema/mysql.sql
+  ignore_errors: yes
+
+- name: setup api
+  shell: icinga2 api setup
+
+- name: Enabling icinga features
+  shell: /sbin/icinga2 feature enable "{{ item }}"
+  with_items:
+    - api
+    - checker
+    - ido-mysql
+    - mainlog
+    - notification
+    - command
+
+- name: reload icinga2
+  systemd:
+    name: icinga2
+    state: restarted
+    daemon_reload: yes

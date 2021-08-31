@@ -1,0 +1,127 @@
+---
+# tasks file for icingaweb2
+- name: Install icingaweb2 repository
+  yum: 
+    name: https://packages.icinga.com/epel/icinga-rpm-release-7-latest.noarch.rpm
+    state: present
+
+- name: Install EPEL and centos repository
+  yum:
+    name: ['epel-release', 'centos-release-scl']
+    state: present
+    update_cache: yes
+  
+- name: Install icingawebw2 packages
+  yum:
+    name: ['icingaweb2', 'icingacli', 'httpd', 'rh-php71-php-mysqlnd', 'wget']
+    state: present
+    update_cache: yes
+
+- name: start and enable apache and php
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  with_items:
+    - httpd
+    - rh-php71-php-fpm
+
+- name: upload icingaweb2 config files
+  copy:
+    src: "{{ item }}"
+    dest: /etc/icingaweb2/{{ item }}
+    owner: apache
+  with_items:
+    - resources.ini
+    - config.ini
+    - authentication.ini
+    - roles.ini
+
+- name: Create mysql database for icingaweb2 
+  mysql_db:
+    name: icingaweb2
+
+- name: Create database user icingaweb2
+  mysql_user:
+    name: icingaweb2
+    password: "{{ password_icingaweb2 }}"
+    priv: 'icingaweb2.*:ALL'
+
+- name: Importing icingaweb2 2 IDO schema
+  mysql_db:
+    name: icingaweb2
+    state: import 
+    target: /usr/share/doc/icingaweb2/schema/mysql.schema.sql
+  ignore_errors: yes
+
+- name: encrypt icingaweb2 password
+  shell: openssl passwd -1 {{ password_icingaweb2 }}
+  register: icingaweb2_password
+
+- name: create icingaweb2 user
+  shell: mysql -u icingaweb2 -p"{{ password_icingaweb2 }}" -e 'INSERT INTO icingaweb_user (name, active, password_hash) VALUES ("icingaweb2", 1, "{{ icingaweb2_password.stdout }}");' icingaweb2
+  environment:
+    MYSQL_PWD: "{{ password_icingaweb2 }}"
+  ignore_errors: yes
+
+- name: add a timezone in php.ini
+  lineinfile: 
+    dest: /etc/opt/rh/rh-php71/php.ini
+    regexp: '^;date.timezone =' 
+    line: 'date.timezone = Asia/Kolkata'
+
+
+- name: enable modules
+  command: icingacli module enable "{{ item }}"
+  with_items:
+    - setup
+    - monitoring
+    - doc
+
+- name: enable apache for icingaweb2
+  command: icingacli setup config webserver apache
+
+- name: create monitoring module dir
+  file:
+    path: /etc/icingaweb2/modules/monitoring/
+    state: directory
+    owner: apache
+
+- name: update icingaweb2 monitoring module config
+  copy:
+    src: "monitoring_{{ item }}"
+    dest: /etc/icingaweb2/modules/monitoring/{{ item }}
+    owner: apache
+  with_items:
+  - config.ini
+  - backends.ini
+  - commandtransports.ini
+
+- name: reload services
+  systemd:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - httpd
+    - icinga2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
